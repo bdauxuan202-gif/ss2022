@@ -6,19 +6,7 @@ if [[ ${EUID} -ne 0 ]]; then
   exit 1
 fi
 
-show_menu() {
-  echo "请选择操作："
-  echo "1) 安装/配置 SS2022"
-  echo "2) 更新脚本"
-  echo "3) 一键卸载"
-  echo "4) 退出"
-}
 
-check_commands() {
-  local missing=()
-  local cmd
-
-  for cmd in "$@"; do
     if ! command -v "${cmd}" >/dev/null 2>&1; then
       missing+=("${cmd}")
     fi
@@ -28,10 +16,7 @@ check_commands() {
     echo "缺少组件: ${missing[*]}，请先安装。"
     exit 1
   fi
-}
 
-preflight_check() {
-  check_commands curl unzip openssl systemctl sysctl ip
 
   if [[ $(uname -m) != "x86_64" ]]; then
     echo "当前系统架构为 $(uname -m)，此脚本仅支持 x86_64。"
@@ -39,143 +24,11 @@ preflight_check() {
   fi
 }
 
-update_script() {
-  local default_url="https://raw.githubusercontent.com/<your-username>/<your-repo>/main/ss2022_xray.sh"
-  local script_url
-  local tmp_script
 
-  check_commands curl
-  script_url=$(prompt_default "请输入更新脚本的地址" "${default_url}")
-  tmp_script=$(mktemp)
-
-  if ! curl -fsSL "${script_url}" -o "${tmp_script}"; then
-    echo "下载更新脚本失败，请检查地址或网络。"
-    rm -f "${tmp_script}"
-    exit 1
-  fi
-
-  if ! head -n 1 "${tmp_script}" | grep -q "bash"; then
-    echo "下载内容不是脚本，已取消更新。"
-    rm -f "${tmp_script}"
-    exit 1
-  fi
-
-  install -m 755 "${tmp_script}" "$0"
-  rm -f "${tmp_script}"
-  echo "脚本已更新，请重新运行。"
-  exit 0
-}
-
-uninstall_all() {
-  echo "正在卸载 SS2022/Xray..."
-
-  if command -v systemctl >/dev/null 2>&1; then
-    systemctl stop xray >/dev/null 2>&1 || true
-    systemctl disable xray >/dev/null 2>&1 || true
-  fi
-
-  rm -f /etc/systemd/system/xray.service
-  rm -rf /etc/xray
-  rm -f /usr/local/bin/xray
-  rm -rf /usr/local/share/xray
-  rm -f /etc/sysctl.d/99-ss2022.conf
-  rm -f /etc/security/limits.d/99-ss2022.conf
-
-  if command -v systemctl >/dev/null 2>&1; then
-    systemctl daemon-reload >/dev/null 2>&1 || true
-  fi
-
-  echo "卸载完成。"
-  exit 0
-}
-
-get_default_iface() {
-  ip route show default 2>/dev/null | awk '{print $5; exit}'
-}
-
-get_link_speed_mbps() {
-  local iface="$1"
-  local speed_path="/sys/class/net/${iface}/speed"
-  if [[ -n "${iface}" && -r "${speed_path}" ]]; then
-    cat "${speed_path}"
-  else
-    echo ""
-  fi
-}
-
-enable_bbr_and_optimize() {
-  echo "正在开启 BBR+FQ 并进行系统优化..."
-
-  local iface
-  local link_speed
-  local rmem_max
-  local wmem_max
-  local tcp_rmem
-  local tcp_wmem
-  local file_max
-
-  iface=$(get_default_iface)
-  link_speed=$(get_link_speed_mbps "${iface}")
-
-  if [[ "${link_speed}" =~ ^[0-9]+$ ]]; then
-    if (( link_speed <= 100 )); then
-      rmem_max=16777216
-      wmem_max=16777216
-      tcp_rmem="4096 87380 16777216"
-      tcp_wmem="4096 65536 16777216"
-      file_max=262144
-    elif (( link_speed <= 1000 )); then
-      rmem_max=33554432
-      wmem_max=33554432
-      tcp_rmem="4096 87380 33554432"
-      tcp_wmem="4096 65536 33554432"
-      file_max=524288
-    else
-      rmem_max=67108864
-      wmem_max=67108864
-      tcp_rmem="4096 87380 67108864"
-      tcp_wmem="4096 65536 67108864"
-      file_max=1048576
-    fi
-    echo "检测到网卡 ${iface:-unknown} 速率 ${link_speed}Mbps，已按带宽自动优化。"
-  else
-    rmem_max=67108864
-    wmem_max=67108864
-    tcp_rmem="4096 87380 67108864"
-    tcp_wmem="4096 65536 67108864"
-    file_max=1048576
-    echo "未检测到带宽速率，使用默认优化参数。"
-  fi
 
   cat > /etc/sysctl.d/99-ss2022.conf <<'SYSCTL'
 net.core.default_qdisc=fq
 net.ipv4.tcp_congestion_control=bbr
-net.ipv4.tcp_fastopen=3
-net.ipv4.tcp_mtu_probing=1
-net.ipv4.tcp_syncookies=1
-SYSCTL
-
-  {
-    echo "net.core.rmem_max=${rmem_max}"
-    echo "net.core.wmem_max=${wmem_max}"
-    echo "net.ipv4.tcp_rmem=${tcp_rmem}"
-    echo "net.ipv4.tcp_wmem=${tcp_wmem}"
-    echo "fs.file-max=${file_max}"
-  } >> /etc/sysctl.d/99-ss2022.conf
-
-  sysctl --system >/dev/null
-
-  if sysctl net.ipv4.tcp_congestion_control 2>/dev/null | grep -q "bbr"; then
-    echo "BBR 已启用。"
-  else
-    echo "BBR 未启用，请检查内核是否支持。"
-  fi
-
-  if sysctl net.core.default_qdisc 2>/dev/null | grep -q "fq"; then
-    echo "FQ 已启用。"
-  else
-    echo "FQ 未启用，请检查内核是否支持。"
-  fi
 
   cat > /etc/security/limits.d/99-ss2022.conf <<'LIMITS'
 * soft nofile 65535
