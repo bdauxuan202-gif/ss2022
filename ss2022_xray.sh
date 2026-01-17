@@ -6,9 +6,54 @@ if [[ ${EUID} -ne 0 ]]; then
   exit 1
 fi
 
-command -v curl >/dev/null 2>&1 || { echo "缺少 curl，请先安装。"; exit 1; }
-command -v unzip >/dev/null 2>&1 || { echo "缺少 unzip，请先安装。"; exit 1; }
-command -v openssl >/dev/null 2>&1 || { echo "缺少 openssl，请先安装。"; exit 1; }
+preflight_check() {
+  local missing=()
+
+  for cmd in curl unzip openssl systemctl sysctl; do
+    if ! command -v "${cmd}" >/dev/null 2>&1; then
+      missing+=("${cmd}")
+    fi
+  done
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "缺少组件: ${missing[*]}，请先安装。"
+    exit 1
+  fi
+
+  if [[ $(uname -m) != "x86_64" ]]; then
+    echo "当前系统架构为 $(uname -m)，此脚本仅支持 x86_64。"
+    exit 1
+  fi
+}
+
+enable_bbr_and_optimize() {
+  echo "正在开启 BBR 并进行系统优化..."
+
+  cat > /etc/sysctl.d/99-ss2022.conf <<'SYSCTL'
+net.core.default_qdisc=fq
+net.ipv4.tcp_congestion_control=bbr
+net.core.rmem_max=67108864
+net.core.wmem_max=67108864
+net.ipv4.tcp_rmem=4096 87380 67108864
+net.ipv4.tcp_wmem=4096 65536 67108864
+net.ipv4.tcp_fastopen=3
+net.ipv4.tcp_mtu_probing=1
+net.ipv4.tcp_syncookies=1
+fs.file-max=1048576
+SYSCTL
+
+  sysctl --system >/dev/null
+
+  cat > /etc/security/limits.d/99-ss2022.conf <<'LIMITS'
+* soft nofile 65535
+* hard nofile 65535
+root soft nofile 65535
+root hard nofile 65535
+LIMITS
+}
+
+preflight_check
+enable_bbr_and_optimize
 
 prompt_default() {
   local prompt="$1"
