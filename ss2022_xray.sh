@@ -6,10 +6,7 @@ if [[ ${EUID} -ne 0 ]]; then
   exit 1
 fi
 
-preflight_check() {
-  local missing=()
 
-  for cmd in curl unzip openssl systemctl sysctl; do
     if ! command -v "${cmd}" >/dev/null 2>&1; then
       missing+=("${cmd}")
     fi
@@ -20,29 +17,18 @@ preflight_check() {
     exit 1
   fi
 
+
   if [[ $(uname -m) != "x86_64" ]]; then
     echo "当前系统架构为 $(uname -m)，此脚本仅支持 x86_64。"
     exit 1
   fi
 }
 
-enable_bbr_and_optimize() {
-  echo "正在开启 BBR 并进行系统优化..."
+
 
   cat > /etc/sysctl.d/99-ss2022.conf <<'SYSCTL'
 net.core.default_qdisc=fq
 net.ipv4.tcp_congestion_control=bbr
-net.core.rmem_max=67108864
-net.core.wmem_max=67108864
-net.ipv4.tcp_rmem=4096 87380 67108864
-net.ipv4.tcp_wmem=4096 65536 67108864
-net.ipv4.tcp_fastopen=3
-net.ipv4.tcp_mtu_probing=1
-net.ipv4.tcp_syncookies=1
-fs.file-max=1048576
-SYSCTL
-
-  sysctl --system >/dev/null
 
   cat > /etc/security/limits.d/99-ss2022.conf <<'LIMITS'
 * soft nofile 65535
@@ -51,9 +37,6 @@ root soft nofile 65535
 root hard nofile 65535
 LIMITS
 }
-
-preflight_check
-enable_bbr_and_optimize
 
 prompt_default() {
   local prompt="$1"
@@ -66,6 +49,32 @@ prompt_default() {
     echo "${input}"
   fi
 }
+
+ACTION="${1:-}"
+if [[ -z "${ACTION}" ]]; then
+  show_menu
+  read -r -p "请输入选项 [1-4]: " ACTION
+fi
+
+case "${ACTION}" in
+  1|install)
+    preflight_check
+    enable_bbr_and_optimize
+    ;;
+  2|update)
+    update_script
+    ;;
+  3|uninstall)
+    uninstall_all
+    ;;
+  4|exit)
+    exit 0
+    ;;
+  *)
+    echo "无效选项。"
+    exit 1
+    ;;
+esac
 
 PORT=$(prompt_default "请输入监听端口" "4433")
 NAME=$(prompt_default "请输入配置名称(用于标识)" "ss2022")
@@ -96,8 +105,23 @@ XRAY_VERSION="latest"
 XRAY_URL="https://github.com/XTLS/Xray-core/releases/${XRAY_VERSION}/download/Xray-linux-64.zip"
 TMP_DIR=$(mktemp -d)
 
-curl -fsSL "${XRAY_URL}" -o "${TMP_DIR}/xray.zip"
-unzip -q "${TMP_DIR}/xray.zip" -d "${TMP_DIR}"
+if ! curl -fsSL "${XRAY_URL}" -o "${TMP_DIR}/xray.zip"; then
+  echo "下载 Xray 失败，请检查网络连接或稍后重试。"
+  rm -rf "${TMP_DIR}"
+  exit 1
+fi
+
+if ! unzip -q "${TMP_DIR}/xray.zip" -d "${TMP_DIR}"; then
+  echo "解压 Xray 失败，请确认 unzip 可用且下载文件完整。"
+  rm -rf "${TMP_DIR}"
+  exit 1
+fi
+
+if [[ ! -f "${TMP_DIR}/xray" ]]; then
+  echo "未找到 Xray 二进制文件，可能下载了不匹配的架构版本。"
+  rm -rf "${TMP_DIR}"
+  exit 1
+fi
 
 install -m 755 "${TMP_DIR}/xray" /usr/local/bin/xray
 install -d /usr/local/share/xray
@@ -155,9 +179,18 @@ systemctl restart xray
 
 rm -rf "${TMP_DIR}"
 
+SERVER_HOST_DEFAULT=$(curl -fsSL https://api.ipify.org || true)
+if [[ -z "${SERVER_HOST_DEFAULT}" ]]; then
+  SERVER_HOST_DEFAULT="your-server-ip"
+fi
+SERVER_HOST=$(prompt_default "请输入服务器 IP 或域名(用于生成分享链接)" "${SERVER_HOST_DEFAULT}")
+SS_USERINFO=$(printf "%s:%s" "${METHOD}" "${PASSWORD}" | openssl base64 -A)
+SS_LINK="ss://${SS_USERINFO}@${SERVER_HOST}:${PORT}#${NAME}"
+
 echo ""
 echo "SS2022 已配置完成："
 echo "端口: ${PORT}"
 echo "名称: ${NAME}"
 echo "加密: ${METHOD}"
 echo "密钥: ${PASSWORD}"
+echo "分享链接: ${SS_LINK}"
