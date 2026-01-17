@@ -63,5 +63,5 @@ cd <your-repo>
 只想下载单个文件时，可以使用 `curl`：
 
 ```bash
-curl -LO https://raw.githubusercontent.com/<your-username>/<your-repo>/main/ss2022_xray.sh
+curl -LO (https://raw.githubusercontent.com/bdauxuan202-gif/ss2022/refs/heads/main/ss2022_xray.sh)
 ```
