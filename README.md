@@ -50,3 +50,18 @@ sudo bash ss2022_xray.sh
 ```bash
 systemctl status xray
 ```
+
+## 从 Git 下载到 VPS
+
+如果仓库已托管在 GitHub/GitLab 等平台，可直接在 VPS 上执行：
+
+```bash
+git clone https://github.com/<your-username>/<your-repo>.git
+cd <your-repo>
+```
+
+只想下载单个文件时，可以使用 `curl`：
+
+```bash
+curl -LO https://raw.githubusercontent.com/<your-username>/<your-repo>/main/ss2022_xray.sh
+```
