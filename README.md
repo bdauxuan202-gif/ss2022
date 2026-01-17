@@ -73,3 +73,23 @@ cd <your-repo>
 ```bash
 curl -LO https://raw.githubusercontent.com/<your-username>/<your-repo>/main/ss2022_xray.sh
 ```
+
+## Git 同步失败/提示重复的处理
+
+当提示无法同步或“有重复/非快进”时，可以按下面方式处理：
+
+```bash
+git pull --rebase
+```
+
+如果本地历史与远端完全不同，先拉取再允许合并历史：
+
+```bash
+git pull --rebase --allow-unrelated-histories
+```
+
+仍无法同步时，建议新建目录重新克隆后再复制脚本文件：
+
+```bash
+git clone https://github.com/<your-username>/<your-repo>.git
+```
