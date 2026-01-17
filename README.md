@@ -28,6 +28,14 @@ sudo bash ss2022_xray.sh
 ```
 
 脚本会提示自定义端口、名称、加密方式与密钥，并自动生成 Xray 配置与 systemd 服务。
+安装完成后会输出可直接使用的 SS2022 分享链接。
+脚本会尝试检测网卡速率并自动调整 BBR/系统参数。
+
+更新脚本可执行：
+
+```bash
+sudo bash ss2022_xray.sh update
+```
 
 ## 在 VPS 上使用
 
@@ -49,4 +57,19 @@ sudo bash ss2022_xray.sh
 
 ```bash
 systemctl status xray
+```
+
+## 从 Git 下载到 VPS
+
+如果仓库已托管在 GitHub/GitLab 等平台，可直接在 VPS 上执行：
+
+```bash
+git clone https://github.com/<your-username>/<your-repo>.git
+cd <your-repo>
+```
+
+只想下载单个文件时，可以使用 `curl`：
+
+```bash
+curl -LO https://raw.githubusercontent.com/<your-username>/<your-repo>/main/ss2022_xray.sh
 ```
